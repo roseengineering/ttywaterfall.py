@@ -316,7 +316,8 @@ class Waterfall:
             ps = ps[self._crop:-self._crop]
             ps = dbv(ps)
             ps -= np.min(ps)
-            data = (len(COLORMAP) * (ps - 1e-6) / np.max(ps)).astype(int)
+            data = (len(COLORMAP) * ps / np.max(ps)).astype(int)
+            data = np.minimum(data, len(COLORMAP) - 1)
             text = ''.join([ 
                 '\033[48;2;{};{};{}m \033[0m'.format(*COLORMAP[i])
                 for i in data ])
