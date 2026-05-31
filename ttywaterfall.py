@@ -291,6 +291,7 @@ class Waterfall:
         self._crop = crop
         self._frame = np.zeros(2 * size, dtype=np.float32)
         self._power = np.zeros(size, dtype=np.float32)
+        self._window = np.blackman(size)
         self._step = step
         self._count = 0
         self._index = 0
@@ -308,7 +309,7 @@ class Waterfall:
 
     def process(self):
         arr = self._frame[::2] + 1j * self._frame[1::2]
-        self._power += np.abs(np.fft.fft(arr))
+        self._power += np.abs(np.fft.fft(arr * self._window))
         self._count += 1
         if self._count == self._step:
             ps = np.fft.fftshift(self._power)
