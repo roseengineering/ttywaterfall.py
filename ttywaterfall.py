@@ -320,8 +320,7 @@ class Waterfall:
             text = ''.join([ 
                 '\033[48;2;{};{};{}m \033[0m'.format(*COLORMAP[i])
                 for i in data ])
-            sys.stdout.write('\n')
-            sys.stdout.write(text)
+            sys.stdout.write('\n' + text)
             self._power[:] = 0
             self._count = 0
 
