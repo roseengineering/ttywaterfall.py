@@ -288,7 +288,7 @@ def dbv(x):
     
 class Waterfall:
     def __init__(self, width, step):
-        crop = round(width / (1 - TOTAL_CROP / 2))
+        crop = round(width / (1 - TOTAL_CROP / 2) - width)
         size = width + 2 * crop
         self._crop = crop
         self._frame = np.zeros(2 * size, dtype=np.float32)
@@ -311,7 +311,7 @@ class Waterfall:
 
     def process(self):
         arr = self._frame[::2] + 1j * self._frame[1::2]
-        self._power += np.abs(np.fft.fft(arr * self._window))
+        self._power[:] += np.abs(np.fft.fft(arr * self._window))
         self._count += 1
         if self._count == self._step:
             ps = np.fft.fftshift(self._power)
@@ -357,8 +357,7 @@ class Client:
                     width = self._width
                 buf = sock.read(BLOCK_SIZE)
                 arr = np.frombuffer(buf, dtype='B').astype(np.float32)
-                arr = (arr - 128) / 128
-                self._waterfall.update(arr)
+                self._waterfall.update(arr - 128.0)
         except socket.error as e:
             print(f'\nSocket error: {e}')
         except KeyboardInterrupt:
