@@ -6,10 +6,11 @@ import sys
 import array
 import termios
 import fcntl
+import urllib.request
 import argparse
 import numpy as np
 
-TOTAL_CROP = .2
+TOTAL_CROP = .0
 BLOCK_SIZE = 2**13
 
 COLORMAP = [
@@ -277,6 +278,7 @@ def parse_args():
     parser.add_argument('--step', default=1024, type=int, help='step')
     parser.add_argument('--host', default='127.0.0.1', help='server host')
     parser.add_argument('--port', default=1234, type=int, help='server port')
+    parser.add_argument('--url', help='url for cu8 stream')
     return parser.parse_args()
 
 
@@ -291,7 +293,7 @@ class Waterfall:
         self._crop = crop
         self._frame = np.zeros(2 * size, dtype=np.float32)
         self._power = np.zeros(size, dtype=np.float32)
-        self._window = np.blackman(size)
+        self._window = np.blackman(size).astype(np.float32)
         self._step = step
         self._count = 0
         self._index = 0
@@ -339,17 +341,22 @@ class Client:
         args = self._args
         self.screen_size()
         signal.signal(signal.SIGWINCH, self.screen_size)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-        sock.connect((args.host, args.port))
+        if args.url:
+            req = urllib.request.Request(args.url)
+            sock = urllib.request.urlopen(req)
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+            sock.connect((args.host, args.port))
+            sock = sock.makefile('rb')
         try:
             width = None
             while True:
                 if width is None or width != self._width:
                     self._waterfall = Waterfall(self._width, args.step)
                     width = self._width
-                buf = sock.recv(BLOCK_SIZE)
-                arr = np.frombuffer(buf, dtype='B').astype(int)
+                buf = sock.read(BLOCK_SIZE)
+                arr = np.frombuffer(buf, dtype='B').astype(np.float32)
                 arr = (arr - 128) / 128
                 self._waterfall.update(arr)
         except socket.error as e:
