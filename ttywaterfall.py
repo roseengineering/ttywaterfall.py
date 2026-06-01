@@ -10,7 +10,7 @@ import urllib.request
 import argparse
 import numpy as np
 
-TOTAL_CROP = .0
+TOTAL_CROP = .2
 BLOCK_SIZE = 2**13
 
 COLORMAP = [
