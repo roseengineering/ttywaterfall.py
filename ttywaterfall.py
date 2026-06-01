@@ -311,7 +311,7 @@ class Waterfall:
 
     def process(self):
         arr = self._frame[::2] + 1j * self._frame[1::2]
-        self._power[:] += np.abs(np.fft.fft(arr * self._window))
+        self._power += np.abs(np.fft.fft(arr * self._window))
         self._count += 1
         if self._count == self._step:
             ps = np.fft.fftshift(self._power)
@@ -357,7 +357,7 @@ class Client:
                     width = self._width
                 buf = sock.read(BLOCK_SIZE)
                 arr = np.frombuffer(buf, dtype='B').astype(np.float32)
-                self._waterfall.update(arr - 128.0)
+                self._waterfall.update(arr - 128)
         except socket.error as e:
             print(f'\nSocket error: {e}')
         except KeyboardInterrupt:
