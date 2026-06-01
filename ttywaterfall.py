@@ -288,7 +288,7 @@ def dbv(x):
     
 class Waterfall:
     def __init__(self, width, step):
-        crop = round(width / (1 - TOTAL_CROP / 2) - width)
+        crop = round((width / (1 - TOTAL_CROP) - width) / 2)
         size = width + 2 * crop
         self._crop = crop
         self._frame = np.zeros(2 * size, dtype=np.float32)
