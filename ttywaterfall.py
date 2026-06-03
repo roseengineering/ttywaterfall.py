@@ -279,6 +279,7 @@ def parse_args():
     parser.add_argument('--host', default='127.0.0.1', help='server host')
     parser.add_argument('--port', default=1234, type=int, help='server port')
     parser.add_argument('--url', help='url for cu8 stream')
+    parser.add_argument('--filename', help='cu8 pcm file')
     return parser.parse_args()
 
 
@@ -341,7 +342,9 @@ class Client:
         args = self._args
         self.screen_size()
         signal.signal(signal.SIGWINCH, self.screen_size)
-        if args.url:
+        if args.filename is not None:
+            sock = open(args.filename, 'rb')
+        elif args.url is not None:
             req = urllib.request.Request(args.url)
             sock = urllib.request.urlopen(req)
         else:
@@ -356,6 +359,8 @@ class Client:
                     self._waterfall = Waterfall(self._width, args.step)
                     width = self._width
                 buf = sock.read(BLOCK_SIZE)
+                if buf == b'':
+                    break
                 arr = np.frombuffer(buf, dtype='B').astype(np.float32)
                 self._waterfall.update(arr - 128)
         except socket.error as e:
