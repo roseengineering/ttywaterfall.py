@@ -27,5 +27,5 @@ options:
 
 ### wavconvert.py
 
-Takes an input 16-bit IQ wav file and converts it to 8-bit.
+Takes an input 16-bit IQ wav file and converts it to a unsigned 8-bit wav for ttywaterfall.py.
 
