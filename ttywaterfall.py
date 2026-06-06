@@ -310,6 +310,13 @@ class Waterfall:
                 self.process()
                 self._index = 0
 
+    def waterfall_line(self, ps):
+            ps -= np.min(ps)
+            d = (len(COLORMAP) * ps / np.max(ps)).astype(int)
+            d = np.minimum(d, len(COLORMAP) - 1)
+            d = [ '\033[48;2;{};{};{}m \033[0m'.format(*COLORMAP[i]) for i in d ]
+            return ''.join(d)
+
     def process(self):
         arr = self._frame[::2] + 1j * self._frame[1::2]
         self._power += np.abs(np.fft.fft(arr * self._window))
@@ -318,13 +325,7 @@ class Waterfall:
             ps = np.fft.fftshift(self._power)
             ps = ps[self._crop:-self._crop]
             ps = dbv(ps)
-            ps -= np.min(ps)
-            data = (len(COLORMAP) * ps / np.max(ps)).astype(int)
-            data = np.minimum(data, len(COLORMAP) - 1)
-            text = ''.join([ 
-                '\033[48;2;{};{};{}m \033[0m'.format(*COLORMAP[i])
-                for i in data ])
-            sys.stdout.write('\n' + text)
+            sys.stdout.write('\n' + self.waterfall_line(ps))
             self._power[:] = 0
             self._count = 0
 

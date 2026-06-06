@@ -25,3 +25,7 @@ options:
   --filename FILENAME  cu8 pcm file (default: None)
 ```
 
+### wavconvert.py
+
+Takes an input 16-bit IQ wav file and converts it to 8-bit.
+
