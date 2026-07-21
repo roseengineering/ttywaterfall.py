@@ -37,8 +37,7 @@ def convert(args):
                 samples = np.frombuffer(buf, dtype='h')
                 samples = samples.astype(np.float32)
                 # rounding avoids mirror artifacts
-                samples = np.round(samples / sample_peak * 127.5 + 128.0)
-                samples = samples.astype('B')
+                samples = np.clip(np.round(samples / sample_peak * 127.5 + 128.0), 0, 255).astype('B')
                 wav_out.writeframes(samples.tobytes())
 
 if __name__ == '__main__':
