@@ -322,7 +322,7 @@ class Waterfall:
         self._power += np.abs(np.fft.fft(arr * self._window))
         self._count += 1
         if self._count == self._step:
-            ps = np.fft.fftshift(self._power)
+            ps = np.fft.fftshift(self._power) / self._count
             ps = ps[self._crop:-self._crop]
             ps = dbv(ps)
             sys.stdout.write('\n' + self.waterfall_line(ps))
