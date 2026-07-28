@@ -3,9 +3,7 @@
 import signal
 import socket
 import sys
-import array
-import termios
-import fcntl
+import os
 import urllib.request
 import argparse
 import numpy as np
@@ -335,9 +333,7 @@ class Client:
         self._args = args
 
     def screen_size(self, *args):
-        buf = array.array('H', [0, 0, 0, 0])
-        fcntl.ioctl(sys.stdout, termios.TIOCGWINSZ, buf)
-        self._width = buf[1]
+        self._width = os.get_terminal_size(sys.stdout.fileno()).columns
 
     def loop_forever(self):
         args = self._args
