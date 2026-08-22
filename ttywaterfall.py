@@ -1,11 +1,13 @@
 #!/bin/env python
 
+import wave
 import signal
 import socket
 import sys
 import os
 import urllib.request
 import argparse
+import email.message
 import numpy as np
 
 TOTAL_CROP = .2
@@ -274,17 +276,23 @@ def parse_args():
     formatter_class = argparse.ArgumentDefaultsHelpFormatter
     parser = argparse.ArgumentParser(formatter_class=formatter_class)
     parser.add_argument('--step', default=1024, type=int, help='step')
-    parser.add_argument('--host', default='127.0.0.1', help='server host')
-    parser.add_argument('--port', default=1234, type=int, help='server port')
-    parser.add_argument('--url', help='url for cu8 stream')
-    parser.add_argument('--filename', help='cu8 pcm file')
+    parser.add_argument('--url', default='http://127.0.0.1:3000', help='http stream')
+    parser.add_argument('--host', default='127.0.0.1', help='rtl_tcp host')
+    parser.add_argument('--port', default=1234, type=int, help='rtl_tcp port')
+    parser.add_argument('--rtltcp', action='store_true', help='use rtl_tcp')
+    parser.add_argument('--filename')
     return parser.parse_args()
 
 
 def dbv(x):
     return 20 * np.log10(np.maximum(x, 1e-12))
 
-    
+   
+def fatal(message):
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+ 
 class Waterfall:
     def __init__(self, width, step):
         crop = round((width / (1 - TOTAL_CROP) - width) / 2)
@@ -339,16 +347,33 @@ class Client:
         args = self._args
         self.screen_size()
         signal.signal(signal.SIGWINCH, self.screen_size)
+        rate = None
         if args.filename is not None:
+            with wave.open(args.filename, "rb") as wav_in:
+                num_channels = wav_in.getnchannels()
+                sample_width = wav_in.getsampwidth()
+                rate = wav_in.getframerate()
+            if num_channels != 2:
+                fatal('two channels only supported')
+            if sample_width == 2:
+                media_type = 'audio/l16'
+            elif sample_width == 1:
+                media_type = 'audio/l8'
+            else:
+                fatal(f'sample width of {sample_width} not supported)')
             sock = open(args.filename, 'rb')
-        elif args.url is not None:
-            req = urllib.request.Request(args.url)
-            sock = urllib.request.urlopen(req)
-        else:
+        elif args.rtltcp:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
             sock.connect((args.host, args.port))
             sock = sock.makefile('rb')
+            media_type = 'audio/l8'
+        else:
+            req = urllib.request.Request(args.url)
+            sock = urllib.request.urlopen(req)
+            msg = email.message.EmailMessage()
+            msg['Content-Type'] = sock.headers.get('Content-Type', '')
+            media_type = msg.get_content_type()
         try:
             width = None
             while True:
@@ -358,8 +383,15 @@ class Client:
                 buf = sock.read(BLOCK_SIZE)
                 if buf == b'':
                     break
-                arr = np.frombuffer(buf, dtype='B').astype(np.float32)
-                self._waterfall.update(arr - 128)
+                if media_type == 'audio/l32':
+                    arr = np.frombuffer(buf, dtype=np.float32)
+                elif media_type == 'audio/l16':
+                    arr = np.frombuffer(buf, dtype='h').astype(np.float32)
+                elif media_type == 'audio/l8':
+                    arr = np.frombuffer(buf, dtype='B').astype(np.float32) - 128
+                else:
+                    fatal(f'bad media type: {media_type}')
+                self._waterfall.update(arr)
         except socket.error as e:
             print(f'\nSocket error: {e}')
         except KeyboardInterrupt:

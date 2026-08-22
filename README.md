@@ -1,6 +1,6 @@
 ## ttywaterfall.py
 
-![Movie of waterfall in operation](movie.webp)
+![Movie of waterfall in operation](res/movie.webp)
 
 ### Description
 
@@ -13,19 +13,20 @@ The code requires that your terminal support truecolor escapes.  This is normall
 ### Usage
 
 ```
-usage: ttywaterfall.py [-h] [--step STEP] [--host HOST] [--port PORT]
-                       [--url URL] [--filename FILENAME]
+usage: ttywaterfall.py [-h] [--step STEP] [--url URL] [--host HOST]
+                       [--port PORT] [--rtltcp] [--filename FILENAME]
 
 options:
   -h, --help           show this help message and exit
   --step STEP          step (default: 1024)
-  --host HOST          server host (default: 127.0.0.1)
-  --port PORT          server port (default: 1234)
-  --url URL            url for cu8 stream (default: None)
-  --filename FILENAME  cu8 pcm file (default: None)
+  --url URL            http stream (default: http://127.0.0.1:3000)
+  --host HOST          rtl_tcp host (default: 127.0.0.1)
+  --port PORT          rtl_tcp port (default: 1234)
+  --rtltcp             use rtl_tcp (default: False)
+  --filename FILENAME
 ```
 
-### wavconvert.py
+### res/wavconvert.py
 
 Takes an input 16-bit IQ wav file and converts it to a unsigned 8-bit wav for ttywaterfall.py.
 
