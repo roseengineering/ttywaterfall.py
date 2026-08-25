@@ -5,6 +5,7 @@ import signal
 import socket
 import sys
 import os
+import datetime
 import urllib.request
 import argparse
 import email.message
@@ -276,6 +277,8 @@ def parse_args():
     formatter_class = argparse.ArgumentDefaultsHelpFormatter
     parser = argparse.ArgumentParser(formatter_class=formatter_class)
     parser.add_argument('--step', default=1024, type=int, help='step')
+    parser.add_argument('--taper', default=.5, type=float, help='taper')
+    parser.add_argument('--crop', default=TOTAL_CROP, type=float, help='total crop')
     parser.add_argument('--url', default='http://127.0.0.1:3000', help='http stream')
     parser.add_argument('--host', default='127.0.0.1', help='rtl_tcp host')
     parser.add_argument('--port', default=1234, type=int, help='rtl_tcp port')
@@ -283,21 +286,22 @@ def parse_args():
     parser.add_argument('--filename')
     return parser.parse_args()
 
-
-def dbv(x):
-    return 20 * np.log10(np.maximum(x, 1e-12))
-
    
 def fatal(message):
     print(message, file=sys.stderr)
     sys.exit(1)
 
  
-class Waterfall:
-    def __init__(self, width, step):
-        crop = round((width / (1 - TOTAL_CROP) - width) / 2)
+class Spectrum:
+    def __init__(self, rate, frequency, width, step, taper, total_crop):
+        crop = round((width / (1 - total_crop) - width) / 2)
         size = width + 2 * crop
+        self._rate = rate
+        self._frequency = frequency
         self._crop = crop
+        self._size = size
+        self._width = width
+        self._taper = 2 * round(size * taper)
         self._frame = np.zeros(2 * size, dtype=np.float32)
         self._power = np.zeros(size, dtype=np.float32)
         self._window = np.blackman(size).astype(np.float32)
@@ -307,33 +311,52 @@ class Waterfall:
 
     def update(self, arr):
         i = 0
-        while i < len(arr):
-            n = min(len(self._frame) - self._index, len(arr) - i)
-            self._frame[self._index:self._index+n] = arr[i:i+n]
+        taper = self._taper
+        frame = self._frame
+        frame_size = len(frame)
+        size = len(arr)
+        while i < size:
+            n = min(frame_size - self._index, size - i)
+            frame[self._index:self._index+n] = arr[i:i+n]
             self._index += n
             i += n
-            if self._index == len(self._frame):
-                self.process()
-                self._index = 0
+            if self._index == frame_size:
+                self.segment()
+                frame[:taper] = frame[frame_size-taper:]
+                self._index = taper
 
-    def waterfall_line(self, ps):
-            ps -= np.min(ps)
-            d = (len(COLORMAP) * ps / np.max(ps)).astype(int)
-            d = np.minimum(d, len(COLORMAP) - 1)
-            d = [ '\033[48;2;{};{};{}m \033[0m'.format(*COLORMAP[i]) for i in d ]
-            return ''.join(d)
-
-    def process(self):
+    def segment(self):
         arr = self._frame[::2] + 1j * self._frame[1::2]
-        self._power += np.abs(np.fft.fft(arr * self._window))
+        self._power += np.abs(np.fft.fft(arr * self._window))**2
         self._count += 1
         if self._count == self._step:
             ps = np.fft.fftshift(self._power) / self._count
-            ps = ps[self._crop:-self._crop]
-            ps = dbv(ps)
+            ps = ps / (len(self._window) * np.sum(self._window**2))
+            ps = ps[self._crop:len(ps)-self._crop]
+            ps = 10 * np.log10(np.maximum(ps, 1e-12))
             sys.stdout.write('\n' + self.waterfall_line(ps))
+            # sys.stdout.write(self.power_line(ps) + '\n')
             self._power[:] = 0
             self._count = 0
+
+    def waterfall_line(self, ps):
+        ps -= np.min(ps)
+        d = (len(COLORMAP) * ps / np.max(ps)).astype(int)
+        d = np.minimum(d, len(COLORMAP) - 1)
+        d = [ '\033[48;2;{};{};{}m \033[0m'.format(*COLORMAP[i]) for i in d ]
+        return ''.join(d)
+
+    def power_line(self, ps):
+        ts = datetime.datetime.now(datetime.timezone.utc)
+        datets = ts.strftime('%y-%m-%d')
+        timets = ts.strftime('%H:%M:%S')
+        step = self._rate / self._size
+        bandwidth = self._width * step
+        start = self._frequency - bandwidth / 2
+        stop = self._frequency + bandwidth / 2
+        data = [ datets, timets, round(start), round(stop), round(step), 0 ]
+        data += [ round(d, 1) for d in ps ]
+        return ','.join([ str(d) for d in data ])
 
 
 class Client:
@@ -343,11 +366,47 @@ class Client:
     def screen_size(self, *args):
         self._width = os.get_terminal_size(sys.stdout.fileno()).columns
 
-    def loop_forever(self):
+    def run_waterfall(self, sock):
         args = self._args
+        media_type = self._media_type
         self.screen_size()
         signal.signal(signal.SIGWINCH, self.screen_size)
-        rate = None
+        try:
+            width = None
+            while True:
+                if width is None or width != self._width:
+                    self._spectrum = Spectrum(
+                        rate=self._rate,
+                        frequency=self._frequency,
+                        width=self._width, 
+                        step=args.step, 
+                        taper=args.taper,
+                        total_crop=args.crop)
+                    width = self._width
+                buf = sock.read(BLOCK_SIZE)
+                if buf == b'':
+                    break
+                if media_type == 'audio/l32':
+                    arr = np.frombuffer(buf, dtype=np.float32)
+                elif media_type == 'audio/l16':
+                    arr = np.frombuffer(buf, dtype='h').astype(np.float32)
+                elif media_type == 'audio/l8':
+                    arr = np.frombuffer(buf, dtype='B').astype(np.float32) - 128
+                else:
+                    fatal(f'bad media type: {media_type}')
+                self._spectrum.update(arr)
+        except socket.error as e:
+            print(f'\nSocket error: {e}')
+        except KeyboardInterrupt:
+            pass
+        finally:
+            sock.close()
+        print()
+
+    def loop_forever(self):
+        args = self._args
+        rate = 0
+        frequency = 0
         if args.filename is not None:
             with wave.open(args.filename, "rb") as wav_in:
                 num_channels = wav_in.getnchannels()
@@ -374,38 +433,24 @@ class Client:
             msg = email.message.EmailMessage()
             msg['Content-Type'] = sock.headers.get('Content-Type', '')
             media_type = msg.get_content_type()
-        try:
-            width = None
-            while True:
-                if width is None or width != self._width:
-                    self._waterfall = Waterfall(self._width, args.step)
-                    width = self._width
-                buf = sock.read(BLOCK_SIZE)
-                if buf == b'':
-                    break
-                if media_type == 'audio/l32':
-                    arr = np.frombuffer(buf, dtype=np.float32)
-                elif media_type == 'audio/l16':
-                    arr = np.frombuffer(buf, dtype='h').astype(np.float32)
-                elif media_type == 'audio/l8':
-                    arr = np.frombuffer(buf, dtype='B').astype(np.float32) - 128
-                else:
-                    fatal(f'bad media type: {media_type}')
-                self._waterfall.update(arr)
-        except socket.error as e:
-            print(f'\nSocket error: {e}')
-        except KeyboardInterrupt:
-            pass
-        finally:
-            sock.close()
-        print()
+            params = dict(msg.get_params()[1:])
+            frequency = int(params.get('frequency', 0))
+            rate = int(params.get('rate', 0))
+        self._media_type = media_type
+        self._frequency = frequency
+        self._rate = rate
+        self.run_waterfall(sock)
 
-
-def main(args):
+def main():
+    args = parse_args()
+    if args.taper < 0 or not args.taper < 1:
+        fatal('bad taper, must be between [0,1)')    
+    if args.crop < 0 or not args.crop < 1:
+        fatal('bad crop, must be between [0,1)')    
     client = Client(args)
     client.loop_forever()
 
 
 if __name__ == '__main__':
-    main(parse_args())
+    main()
 
